@@ -1,0 +1,9 @@
+[package]
+name = "codegen"
+version = "0.1.0"
+authors = ["evuez <helloevuez@gmail.com>"]
+
+[dependencies]
+hyper = "0.10.10"
+qrcode = "0.2.1"
+image = "0.12.4"
