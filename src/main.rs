@@ -1,48 +1,37 @@
-extern crate hyper;
-extern crate qrcode;
 extern crate image;
+extern crate iron;
+extern crate qrcode;
+extern crate router;
 
-use hyper::mime::{Mime, TopLevel, SubLevel};
-use hyper::server::{Server, Request, Response};
-use hyper::header::{
-    ContentDisposition,
-    ContentLength,
-    ContentType,
-    DispositionType,
-    DispositionParam,
-    Charset
-};
+use iron::prelude::Iron;
+use router::Router;
 
-use image::{GrayImage, ImageLuma8};
-use qrcode::QrCode;
 
-use std::io::Cursor;
-use std::io::Write;
+mod generators {
+    use image::{PNG, GrayImage, ImageLuma8};
+    use iron::prelude::{IronResult, Request, Response};
+    use iron::headers::ContentType;
+    use iron::status;
+    use qrcode::QrCode;
+
+    use std::io::Cursor;
+
+    pub fn qrcode(req: &mut Request) -> IronResult<Response> {
+        let ref code = req.extensions.get::<Router>().unwrap().find("code").unwrap();
+
+        let code = QrCode::new(*code).unwrap();
+        let image: GrayImage = code.render().to_image();
+        let ref mut image_buffer = Cursor::new(Vec::new());
+        let _ = ImageLuma8(image).save(image_buffer, PNG);
+        let image_data = image_buffer.get_ref();
+
+        Ok(Response::with((ContentType::png().0, status::Created, image_data.as_slice())))
+    }
+}
 
 fn main() {
-    Server::http("0.0.0.0:4500").unwrap().handle(generator).unwrap();
+    let mut router = Router::new();
+    router.get("/qrcodes/:code", generators::qrcode, "code");
+
+    Iron::new(router).http("localhost:4500").unwrap();
 }
-
-fn generator(request: Request, mut response: Response) {
-    println!("{}", request.uri);
-
-    let code = QrCode::new(b"01234567").unwrap();
-    let image: GrayImage = code.render().to_image();
-    let ref mut image_buffer = Cursor::new(Vec::new());
-    let _ = ImageLuma8(image).save(image_buffer, image::PNG);
-    let image_data = image_buffer.get_ref();
-
-    response.headers_mut().set(ContentType(Mime(TopLevel::Image, SubLevel::Png, vec![])));
-    response.headers_mut().set(ContentDisposition {
-        disposition: DispositionType::Inline,
-        parameters: vec![DispositionParam::Filename(
-            Charset::Us_Ascii,
-            None,
-            b"code.png".to_vec()
-        )]
-    });
-    response.headers_mut().set(ContentLength(image_data.len() as u64));
-
-    response.start().unwrap().write_all(image_data.as_slice()).unwrap();
-}
-
